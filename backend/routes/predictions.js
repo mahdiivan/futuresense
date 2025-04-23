@@ -1,30 +1,31 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 const { exec } = require('child_process');
-const path = require('path');
+const path    = require('path');
 
 router.get('/', (req, res) => {
   const ticker = req.query.ticker;
   if (!ticker) {
-    return res.status(400).json({ error: "Ticker parameter is required" });
+    return res.status(400).json({ error: "Missing ?ticker=" });
   }
 
-  const scriptPath = path.join(__dirname, '..', '..', 'ml-models', 'stock_prediction', 'api.py');
-  
-  const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
-  const cmd = `${pythonCommand} "${scriptPath}" --ticker ${ticker}`;
+  // point this at your api.py
+  const scriptPath = path.resolve(__dirname, '../../ml-models/stock_prediction/api.py');
+  // Railway’s Python is on `python`, not python3
+  const pythonCmd = process.env.PYTHON || 'python';
+  const cmd       = `"${pythonCmd}" "${scriptPath}" --ticker ${ticker}`;
 
-  exec(cmd, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`Error executing Python script: ${error}`);
-      return res.status(500).json({ error: error.message });
+  exec(cmd, { cwd: path.dirname(scriptPath) }, (err, stdout, stderr) => {
+    if (err) {
+      console.error("Prediction script failed:", stderr || err.message);
+      return res.status(500).json({ error: "Prediction service error" });
     }
     try {
-      const prediction = JSON.parse(stdout);
-      res.json(prediction);
-    } catch (parseError) {
-      console.error(`Error parsing output: ${parseError}`);
-      res.status(500).json({ error: "Error parsing prediction output" });
+      const data = JSON.parse(stdout);
+      return res.json(data);
+    } catch (parseErr) {
+      console.error("Invalid JSON from prediction script:", stdout);
+      return res.status(500).json({ error: "Bad prediction output" });
     }
   });
 });
