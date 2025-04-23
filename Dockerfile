@@ -1,63 +1,40 @@
-# ┌─────────────────────────────────────────────────────────────────────────────┐
-# │  Build image                                                              │
-# └─────────────────────────────────────────────────────────────────────────────┘
-FROM node:18-slim AS build
+# ─── Stage 1: Python environment ─────────────────────────────
+FROM python:3.10-slim AS python-env
 
-# Install Python3, venv & build tools
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-        python3 python3-venv python3-pip build-essential \
- && rm -rf /var/lib/apt/lists/*
+# Install any OS‐level build tools you need
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  1) Set up Python venv & install Python deps
-# ──────────────────────────────────────────────────────────────────────────────
-# Copy only requirements first (caches layer)
+# Copy & install your ML-model requirements
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create & activate venv
-RUN python3 -m venv venv
+# Copy only the models folder so Docker layer caching works
+COPY ml-models ./ml-models
 
-# Put venv's bin on PATH
-ENV PATH="/app/venv/bin:$PATH"
 
-# Upgrade pip & install
-RUN pip install --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
+# ─── Stage 2: Node environment ──────────────────────────────
+FROM node:18-slim AS node-env
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  2) Install Node dependencies
-# ──────────────────────────────────────────────────────────────────────────────
-# Copy only package files to leverage Docker cache
+# Install Python runtime from the previous stage
+COPY --from=python-env /usr/local /usr/local
+
+WORKDIR /app
+
+# Install your Node dependencies
 COPY package*.json ./
-
-# Ensure your package.json includes:
-#   "scripts": { "start": "node backend/server.js", … }
 RUN npm install --production
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  3) Copy the rest of your code
-# ──────────────────────────────────────────────────────────────────────────────
+# Copy the rest of your application code
 COPY . .
 
-# ┌─────────────────────────────────────────────────────────────────────────────┐
-# │  Runtime image                                                             │
-# └─────────────────────────────────────────────────────────────────────────────┘
-FROM node:18-slim
-
-# Copy venv+node_modules+app from build stage
-WORKDIR /app
-COPY --from=build /app /app
-
-# Make sure our venv and node live on PATH
-ENV PATH="/app/venv/bin:/app/node_modules/.bin:$PATH"
-# Let your Node app read this
+# Expose your app’s port
 ENV PORT=3000
-
-# Expose the port your Express server listens on
 EXPOSE 3000
 
-# Run via npm start
+# Tell Railway (and Docker) how to start
 CMD ["npm", "start"]
