@@ -1,0 +1,7 @@
+# ml-models/stock_prediction/requirements.txt
+pandas
+numpy
+scikit-learn
+yfinance
+tensorflow-cpu
+keras
