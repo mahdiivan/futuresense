@@ -1,32 +1,63 @@
-# Use a slim Node base
-FROM node:18-slim
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  Build image                                                              │
+# └─────────────────────────────────────────────────────────────────────────────┘
+FROM node:18-slim AS build
 
-# Install Python3 & pip
+# Install Python3, venv & build tools
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      python3 python3-pip python3-dev build-essential \
+        python3 python3-venv python3-pip build-essential \
  && rm -rf /var/lib/apt/lists/*
 
-# Set workdir
 WORKDIR /app
 
-# Copy & install Python deps first
-COPY ml-models/stock_prediction/requirements.txt ./ml-models/stock_prediction/
-RUN pip3 install --no-cache-dir -r ml-models/stock_prediction/requirements.txt
+# ──────────────────────────────────────────────────────────────────────────────
+#  1) Set up Python venv & install Python deps
+# ──────────────────────────────────────────────────────────────────────────────
+# Copy only requirements first (caches layer)
+COPY requirements.txt .
 
-COPY ml-models/sentiment_analysis/requirements.txt ./ml-models/sentiment_analysis/
-RUN pip3 install --no-cache-dir -r ml-models/sentiment_analysis/requirements.txt
+# Create & activate venv
+RUN python3 -m venv venv
 
-# Copy package.json & install Node deps
+# Put venv's bin on PATH
+ENV PATH="/app/venv/bin:$PATH"
+
+# Upgrade pip & install
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  2) Install Node dependencies
+# ──────────────────────────────────────────────────────────────────────────────
+# Copy only package files to leverage Docker cache
 COPY package*.json ./
+
+# Ensure your package.json includes:
+#   "scripts": { "start": "node backend/server.js", … }
 RUN npm install --production
 
-# Copy the rest of your code
+# ──────────────────────────────────────────────────────────────────────────────
+#  3) Copy the rest of your code
+# ──────────────────────────────────────────────────────────────────────────────
 COPY . .
 
-# Expose the port Railway will use
-ENV PORT 8080
-EXPOSE 8080
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  Runtime image                                                             │
+# └─────────────────────────────────────────────────────────────────────────────┘
+FROM node:18-slim
 
-# Start your server
-CMD ["node", "backend/server.js"]
+# Copy venv+node_modules+app from build stage
+WORKDIR /app
+COPY --from=build /app /app
+
+# Make sure our venv and node live on PATH
+ENV PATH="/app/venv/bin:/app/node_modules/.bin:$PATH"
+# Let your Node app read this
+ENV PORT=3000
+
+# Expose the port your Express server listens on
+EXPOSE 3000
+
+# Run via npm start
+CMD ["npm", "start"]
