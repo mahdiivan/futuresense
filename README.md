@@ -1,1 +1,2 @@
 # AI-Financial-Portfolio-Tracker
+This project provided a real-world solution for retail investors to make informed decisions by combining machine learning stock predictions, sentiment analysis, and historical investment tracking into one streamlined platform. By automating forecasts and reducing computation time with caching, FutureSense empowered users to visualize their financial future with greater clarity, accuracy, and speed — ultimately bridging the gap between complex data science and user-friendly financial tools.
